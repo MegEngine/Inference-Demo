@@ -1,0 +1,7 @@
+.gradle/
+app/build/
+.idea/
+app/*.iml
+*.iml
+Camera2Basic/local.properties
+install/

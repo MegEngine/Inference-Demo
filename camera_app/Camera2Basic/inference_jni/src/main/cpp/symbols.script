@@ -1,0 +1,8 @@
+{
+global:
+    Java_*;
+    debug_*;
+    shufflenet_*;
+local: *;
+
+};
