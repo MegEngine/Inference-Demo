@@ -21,30 +21,11 @@
 
 namespace mgb {
 
-//! like std::index_sequence in C++14
-template <size_t... Idx>
-class index_sequence {
-    public:
-        static constexpr size_t size() { return sizeof...(Idx); }
-};
-
 namespace metahelper_detail {
     [[noreturn]] void on_maybe_invalid_val_access();
 
-    template <typename Idxseq, size_t End>
-    struct make_index_sequence_impl;
-    template <size_t... Idx, size_t End>
-    struct make_index_sequence_impl<index_sequence<Idx...>, End> {
-        using type = typename make_index_sequence_impl<
-            index_sequence<End-1, Idx...>, End-1>::type;
-    };
-    template <size_t... Idx>
-    struct make_index_sequence_impl<index_sequence<Idx...>, 0> {
-        using type = index_sequence<Idx...>;
-    };
-
     template <class T, class Tuple, size_t... I>
-    constexpr T make_from_tuple_impl(Tuple&& t, index_sequence<I...>) {
+    constexpr T make_from_tuple_impl(Tuple&& t, std::index_sequence<I...>) {
         return T(std::get<I>(std::forward<Tuple>(t))...);
     }
 
@@ -73,12 +54,40 @@ namespace metahelper_detail {
         static std::false_type test(...);
         using type = decltype(test(reinterpret_cast<T*>(0)));
     };
-} // namespace metahelper_detail
 
-//! construct index_sequence<0..N-1>
-template <size_t N>
-using make_index_sequence =
-typename metahelper_detail::make_index_sequence_impl<index_sequence<>, N>::type;
+    struct if_constexpr_identity {
+        template <typename T>
+        decltype(auto) operator()(T&& x) {
+            return std::forward<T>(x);
+        }
+    };
+
+    template <bool cond>
+    struct if_constexpr_impl;
+
+    template <>
+    struct if_constexpr_impl<true> {
+        template <class Then, class Else>
+        static decltype(auto) run(Then&& then, Else&&) {
+            return then(if_constexpr_identity{});
+        }
+    };
+
+    template <>
+    struct if_constexpr_impl<false> {
+        template <class Then, class Else>
+        static decltype(auto) run(Then&&, Else&& else_) {
+            return else_(if_constexpr_identity{});
+        }
+    };
+
+    template <size_t skip, typename T, size_t isize, size_t... I>
+    decltype(auto) array_skip_impl(const std::array<T, isize>& arr,
+                                   std::index_sequence<I...>) {
+        static_assert(isize > skip, "invalid argument `skip`");
+        return std::forward_as_tuple(arr[I + skip]...);
+    }
+} // namespace metahelper_detail
 
 //! construct object T from tuple of arguments
 template <class T, class Tuple>
@@ -86,7 +95,7 @@ constexpr T make_from_tuple(Tuple&& t) {
     constexpr std::size_t size =
         std::tuple_size<std::decay_t<Tuple>>::value;
     return metahelper_detail::make_from_tuple_impl<T>(
-            std::forward<Tuple>(t), make_index_sequence<size>{});
+            std::forward<Tuple>(t), std::make_index_sequence<size>{});
 }
 
 /*!
@@ -302,6 +311,26 @@ T raw_cast(U&& u) {
     SafeUnion2<typename std::decay<T>::type, typename std::decay<U>::type> x;
     x.u = u;
     return x.t;
+}
+
+//! functionally equivalent to "if constexpr" in C++17.
+//! then/else callbacks receives an Identity functor as its sole argument.
+//! The functor is useful for masking eager type check on generic lambda,
+//! preventing syntax error on not taken branches.
+template <bool Cond, class Then, class Else>
+decltype(auto) if_constexpr(Then&& then, Else&& else_) {
+    return metahelper_detail::if_constexpr_impl<Cond>::run(then, else_);
+}
+
+template <bool Cond, class Then>
+decltype(auto) if_constexpr(Then&& then) {
+    return if_constexpr<Cond>(std::forward<Then>(then), [](auto) {});
+}
+
+template <size_t skip, typename T, size_t isize>
+decltype(auto) array_skip(const std::array<T, isize>& arr) {
+    return metahelper_detail::array_skip_impl<skip>(
+            arr, std::make_index_sequence<isize - skip>{});
 }
 
 } // namespace mgb

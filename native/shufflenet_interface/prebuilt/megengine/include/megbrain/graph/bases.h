@@ -22,10 +22,12 @@
 #define MGB_ENABLE_SUBLINEAR ((!MGB_BUILD_SLIM_SERVING) && (!!MGB_HAVE_THREAD))
 #endif  //  MGB_ENABLE_SUBLINEAR
 
+// FIXME: reopen when rewriting memory swap or existing tests are passed
+#define MGB_ENABLE_MEMORY_SWAP 0
 #ifndef MGB_ENABLE_MEMORY_SWAP
 #define MGB_ENABLE_MEMORY_SWAP \
     ((!MGB_BUILD_SLIM_SERVING) && (!!MGB_HAVE_THREAD) && (MGB_CUDA))
-#endif
+#endif  //  MGB_ENABLE_MEMORY_SWAP
 
 #ifndef MGB_ENABLE_PARTIAL_EXECUTION
 #define MGB_ENABLE_PARTIAL_EXECUTION (!MGB_BUILD_SLIM_SERVING)
@@ -40,6 +42,21 @@
 #define MGB_IF_COND_EXEC(x...)
 #endif
 
+#if MGB_CUDA && MGB_ENABLE_EXCEPTION
+#define MGB_ENABLE_VAR_DEV_MEM_DEFRAGMENTER 1
+#else
+#define MGB_ENABLE_VAR_DEV_MEM_DEFRAGMENTER 0
+#endif // whether enable memory defragment
+
+namespace mgb {
+
+class GraphError : public MegBrainError {
+public:
+    using MegBrainError::MegBrainError;
+};
+
+}  // namespace mgb
+
 namespace mgb {
 
 //! computing graph
@@ -49,11 +66,7 @@ namespace static_infer {
     struct DepElement;
 };
 
-class GraphError: public MegBrainError {
-    public:
-        using MegBrainError::MegBrainError;
-};
-
+using GraphError = mgb::GraphError;
 class OperatorNodeBase;
 class ComputingGraph;
 

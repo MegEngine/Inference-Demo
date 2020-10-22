@@ -22,6 +22,7 @@
 
 #if MGB_CUDA
 #include <cuda_runtime.h>
+#include <cuda.h>
 
 #if MGB_ENABLE_LOGGING
 #define MGB_CUDA_CHECK(expr)                                          \
@@ -32,6 +33,16 @@
                                   __func__, __LINE__);                \
         }                                                             \
     } while (0)
+
+#define MGB_CUDA_CU_CHECK(expr)                                          \
+    do {                                                                 \
+        CUresult __cuda_check_code = (expr);                             \
+        if (!mgb_likely(__cuda_check_code == CUDA_SUCCESS)) {            \
+            ::mgb::_on_cuda_cu_error(#expr, __cuda_check_code, __FILE__, \
+                                     __func__, __LINE__);                \
+        }                                                                \
+    } while (0)
+
 #else
 #define MGB_CUDA_CHECK(expr)                                            \
     do {                                                                \
@@ -41,15 +52,132 @@
         }                                                               \
     } while (0)
 
+#define MGB_CUDA_CU_CHECK(expr)                                            \
+    do {                                                                   \
+        CUresult __cuda_check_code = (expr);                               \
+        if (!mgb_likely(__cuda_check_code == CUDA_SUCCESS)) {              \
+            ::mgb::_on_cuda_cu_error(#expr, __cuda_check_code, "", "", 1); \
+        }                                                                  \
+    } while (0)
+
+#endif //MGB_ENABLE_LOGGING
+#endif //MGB_CUDA
+
+#if MGB_ATLAS
+#include "megcore_atlas.h"
+#include <atomic>
+
+#if MGB_ENABLE_LOGGING
+#define MGB_ATLAS_CHECK(expr)                                         \
+    do {                                                              \
+        aclError __acl_check_code = (expr);                           \
+        if (!mgb_likely(__acl_check_code == ACL_ERROR_NONE)) {        \
+            ::mgb::_on_atlas_error(#expr, __acl_check_code, __FILE__, \
+                                  __func__, __LINE__);                \
+        }                                                             \
+    } while (0)
+#else
+#define MGB_ATLAS_CHECK(expr)                                           \
+    do {                                                                \
+        aclError __acl_check_code = (expr);                             \
+        if (!mgb_likely(__acl_check_code == ACL_ERROR_NONE)) {          \
+            ::mgb::_on_atlas_error(#expr, __acl_check_code, "", "", 1); \
+        }                                                               \
+    } while (0)
+
+#endif //MGB_ENABLE_LOGGING
+
+#endif // MGB_ATLAS
+
+
+#if MGB_ROCM
+#include "hcc_detail/hcc_defs_prologue.h"
+#include "megcore_rocm.h"
+
+#if MGB_ENABLE_LOGGING
+#define MGB_ROCM_CHECK(expr)                                                  \
+    do {                                                                      \
+        hipError_t __hip_check_code = (expr);                                 \
+        if (!mgb_likely(__hip_check_code == hipSuccess)) {                    \
+            ::mgb::_on_hip_error(#expr, __hip_check_code, __FILE__, __func__, \
+                                 __LINE__);                                   \
+        }                                                                     \
+    } while (0)
+#else
+#define MGB_ROCM_CHECK(expr)                                          \
+    do {                                                              \
+        hipError_t __hip_check_code = (expr);                         \
+        if (!mgb_likely(__hip_check_code == hipSuccess)) {            \
+            ::mgb::_on_hip_error(#expr, __hip_check_code, "", "", 1); \
+        }                                                             \
+    } while (0)
+
 #endif  // MGB_ENABLE_LOGGING
 
 #endif
 
+#if MGB_CAMBRICON
+#include <cnrt.h>
+#include <cndev.h>
+#include <cnml.h>
+
+#if MGB_ENABLE_LOGGING
+#define MGB_CNRT_CHECK(expr)                                          \
+    do {                                                              \
+        cnrtRet_t __cnrt_check_code = (expr);                         \
+        if (mgb_unlikely(__cnrt_check_code != CNRT_RET_SUCCESS)) {    \
+            ::mgb::_on_cnrt_error(#expr, __cnrt_check_code, __FILE__, \
+                                  __func__, __LINE__);                \
+        }                                                             \
+    } while (0)
+#define MGB_CNDEV_CHECK(expr)                                           \
+    do {                                                                \
+        cndevRet_t __cndev_check_code = (expr);                         \
+        if (mgb_unlikely(__cndev_check_code != CNDEV_SUCCESS)) {        \
+            ::mgb::_on_cndev_error(#expr, __cndev_check_code, __FILE__, \
+                                   __func__, __LINE__);                 \
+        }                                                               \
+    } while (0)
+#define MGB_CNML_CHECK(expr)                                          \
+    do {                                                              \
+        cnmlStatus_t __cnml_check_code = (expr);                      \
+        if (mgb_unlikely(__cnml_check_code != CNML_STATUS_SUCCESS)) { \
+            ::mgb::_on_cnml_error(#expr, __cnml_check_code, __FILE__, \
+                                  __func__, __LINE__);                \
+        }                                                             \
+    } while (0)
+#else
+#define MGB_CNRT_CHECK(expr)                                       \
+    do {                                                                \
+        cnrtRet_t __cnrt_check_code = (expr);                           \
+        if (mgb_unlikely(__cnrt_check_code != CNRT_RET_SUCCESS)) {      \
+            ::mgb::_on_cnrt_error(#expr, __cnrt_check_code, "", "", 1); \
+        }                                                               \
+    } while (0)
+#define MGB_CNDEV_CHECK(expr)                                               \
+    do {                                                                    \
+        cndevRet_t __cndev_check_code = (expr);                             \
+        if (mgb_unlikely(__cndev_check_code != CNDEV_SUCCESS)) {            \
+            ::mgb::_on_cndev_error(#expr, __cndev_check_code, __FILE__, "", \
+                                   "", 1);                                  \
+        }                                                                   \
+    } while (0)
+#define MGB_CNML_CHECK(expr)                                                  \
+    do {                                                                      \
+        cnmlStatus_t __cnml_check_code = (expr);                              \
+        if (mgb_unlikely(__cnml_check_code != CNML_STATUS_SUCCESS)) {         \
+            ::mgb::_on_cnml_error(#expr, __cnml_check_code, __FILE__, "", "", \
+                                  1);                                         \
+        }                                                                     \
+    } while (0)
+#endif  // MGB_ENABLE_LOGGING
+#endif  // MGB_CAMBRICON
+
 //! whether to enable asynchronous initialization for CompNode and CompNodeEnv
-#define MGB_ENABLE_COMP_NODE_ASYNC_INIT (MGB_CUDA)
+#define MGB_ENABLE_COMP_NODE_ASYNC_INIT (MGB_CUDA || MGB_ROCM)
 
 //! whether AsyncErrorInfo is needed
-#define MGB_NEED_MEGDNN_ASYNC_ERROR (MGB_CUDA)
+#define MGB_NEED_MEGDNN_ASYNC_ERROR (MGB_CUDA || MGB_ROCM)
 
 #if MGB_ENABLE_COMP_NODE_ASYNC_INIT
 #include <atomic>
@@ -61,12 +189,34 @@
 #include "megbrain/utils/thin/function.h"
 
 namespace mgb {
+#if MGB_ATLAS
+[[noreturn]] void _on_atlas_error(const char* expr, aclError err,
+                                  const char* file, const char* func, int line);
+#endif
 
 #if MGB_CUDA
 [[noreturn]] void _on_cuda_error(const char* expr, cudaError_t err,
                                  const char* file, const char* func, int line);
+[[noreturn]] void _on_cuda_cu_error(const char* expr, CUresult err,
+                                    const char* file, const char* func,
+                                    int line);
 #endif
 
+
+#if MGB_ROCM
+[[noreturn]] void _on_hip_error(const char* expr, hipError_t err,
+                                const char* file, const char* func, int line);
+#endif
+
+#if MGB_CAMBRICON
+const char* cnml_get_error_string(cnmlStatus_t err);
+[[noreturn]] void _on_cnrt_error(const char* expr, cnrtRet_t err,
+                                 const char* file, const char* func, int line);
+[[noreturn]] void _on_cndev_error(const char* expr, cndevRet_t err,
+                                  const char* file, const char* func, int line);
+[[noreturn]] void _on_cnml_error(const char* expr, cnmlStatus_t err,
+                                 const char* file, const char* func, int line);
+#endif
 
 class CPUDispatcher : public MegcoreCPUDispatcher {
 public:
@@ -80,6 +230,7 @@ public:
     }
 };
 
+using AtlasDispatcher = CPUDispatcher;
 
 /*!
  * \brief CompNode environment
@@ -158,6 +309,22 @@ public:
             m_cuda_env.activate();
         }
 #endif
+#if MGB_ROCM
+        if (m_property.type == DeviceType::ROCM) {
+            m_rocm_env.activate();
+        }
+#endif
+#if MGB_CAMBRICON
+        if (m_property.type == DeviceType::CAMBRICON) {
+            m_cnrt_env.activate();
+        }
+#endif
+#if MGB_ATLAS
+        if (m_property.type == DeviceType::ATLAS) {
+            m_atlas_env.activate();
+        }
+#endif
+
     }
 
     /*!
@@ -199,6 +366,144 @@ public:
                          const ContinuationCtx<cudaStream_t>& cont);
 #endif
 
+#if MGB_ATLAS
+    struct AtlasEnv {
+        int device = -1;
+        aclrtStream stream = 0;
+
+        struct InitStatus {
+            bool initialized;
+            Spinlock mtx;
+            InitStatus() : initialized{false} {}
+            void init() {
+                MGB_LOCK_GUARD(mtx);
+                if (!initialized) {
+                    auto acl_err = aclInit(nullptr);
+                    initialized = acl_err == ACL_ERROR_NONE;
+                    mgb_throw_if(!initialized, AtlasError,
+                                 "acl initialize failed: (acl: %d)",
+                                 static_cast<int>(acl_err));
+                }
+            }
+            ~InitStatus() {
+                MGB_LOCK_GUARD(mtx);
+                if (initialized) {
+                    initialized = false;
+                }
+            }
+        };
+        static InitStatus init_status;
+
+        static void init() {
+            init_status.init();
+        }
+
+        void activate() const {
+            init();
+            int32_t device_id = -1;
+            auto err = aclrtGetDevice(&device_id);
+            if (err == ACL_ERROR_INVALID_DEVICE || device != device_id) {
+                MGB_ATLAS_CHECK(aclrtSetDevice(device));
+            } else {
+                MGB_ATLAS_CHECK(err);
+                mgb_assert(err == ACL_ERROR_NONE,
+                           "Failed to invoke aclrtGetDevice, get %s(%d)",
+                           megcore::atlas::get_error_str(err), err);
+            }
+        }
+    };
+
+    const AtlasEnv& atlas_env() const {
+        if (mgb_unlikely(m_property.type != DeviceType::ATLAS))
+            on_bad_device_type(DeviceType::ATLAS);
+        ensure_async_init_finished();
+        return m_atlas_env;
+    }
+
+    //! init this as a atlas env synchronously
+    void init_atlas(CompNode comp_node, const AtlasEnv& env);
+#endif
+
+#if MGB_ROCM
+    struct ROCmEnv {
+        int device = -1;
+        hipStream_t stream = 0;
+        hipDeviceProp_t device_prop;
+
+        void activate() const { MGB_ROCM_CHECK(hipSetDevice(device)); }
+    };
+
+    const ROCmEnv& rocm_env() const {
+        if (mgb_unlikely(m_property.type != DeviceType::ROCM))
+            on_bad_device_type(DeviceType::ROCM);
+        ensure_async_init_finished();
+        return m_rocm_env;
+    }
+
+    //! init this as a rocm env asynchronously
+    void init_rocm_async(int dev, CompNode comp_node,
+                         const ContinuationCtx<hipStream_t>& cont);
+
+#endif
+
+#if MGB_CAMBRICON
+    struct CnrtEnv {
+        int device = -1;
+        cnrtQueue_t queue = nullptr;
+        cnrtDeviceInfo_t device_info;
+        struct InitStatus {
+            bool initialized;
+            Spinlock mtx;
+            InitStatus() : initialized{false} {}
+            void init() {
+                MGB_LOCK_GUARD(mtx);
+                if (!initialized) {
+                    auto cnrt_err = cnrtInit(0);
+                    initialized = cnrt_err == CNRT_RET_SUCCESS;
+                    auto cndev_err = cndevInit(0);
+                    initialized &= cndev_err == CNDEV_SUCCESS;
+                    auto cnml_err = cnmlInit(0);
+                    initialized &= cnml_err == CNML_STATUS_SUCCESS;
+                    mgb_throw_if(!initialized, CnrtError,
+                                 "cnrt/cndev/cnml initialize failed: (cnrt:%d, "
+                                 "cndev:%d, cnml: %d)",
+                                 static_cast<int>(cnrt_err),
+                                 static_cast<int>(cndev_err),
+                                 static_cast<int>(cnml_err));
+                }
+            }
+            ~InitStatus() {
+                if (initialized) {
+                    MGB_CNML_CHECK(cnmlExit());
+                    MGB_CNDEV_CHECK(cndevRelease());
+                    cnrtDestroy();
+                    initialized = false;
+                }
+            }
+        };
+        static InitStatus init_status;
+
+        static void init() {
+            init_status.init();
+        }
+
+        void activate() const {
+            init();
+            cnrtDev_t dev;
+            MGB_CNRT_CHECK(cnrtGetDeviceHandle(&dev, device));
+            MGB_CNRT_CHECK(cnrtSetCurrentDevice(dev));
+        }
+    };
+
+    const CnrtEnv& cnrt_env() const {
+        if (mgb_unlikely(m_property.type != DeviceType::CAMBRICON))
+            on_bad_device_type(DeviceType::CAMBRICON);
+        return m_cnrt_env;
+    }
+
+    void init_cnrt(int dev, CompNode comp_node,
+                   const ContinuationCtx<cnrtQueue_t>& cont);
+#endif
 
     struct CpuEnv {
         using Task = CPUDispatcher::Task;
@@ -238,6 +543,15 @@ private:
 
 #if MGB_CUDA
     CudaEnv m_cuda_env;
+#endif
+#if MGB_ATLAS
+    AtlasEnv m_atlas_env;
+#endif
+#if MGB_ROCM
+    ROCmEnv m_rocm_env;
+#endif
+#if MGB_CAMBRICON
+    CnrtEnv m_cnrt_env;
 #endif
     CpuEnv m_cpu_env;
 

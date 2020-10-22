@@ -12,6 +12,8 @@
 #pragma once
 
 #include "megbrain/gopt/framework.h"
+#include "megbrain/graph/cg.h"
+#include "megbrain/opr/dnn/convolution.h"
 
 namespace mgb {
 namespace gopt {
@@ -229,67 +231,67 @@ namespace gopt {
     };
 
     /*!
+     * \brief convert tensor format to nchw4 to speed up inference on CUDA
+     */
+    class EnableNCHW4Pass final : public TensorReformatPass {
+        VarNode* on_graph_endpoint_var(VarNode* new_var,
+                                       VarNode* orig_var) const override;
+    public:
+        const char* name() const override {
+            return mgb_cstr_log("tensor_format_nchw4");
+        }
+
+        //! make nchw -> nchw4 converter opt pass
+        static std::unique_ptr<EnableNCHW4Pass> make_nchw4_converter();
+    };
+
+    /*!
      * \brief convert tensor format to nchwxx to speed up inference on certain
      * devices
      */
-    class EnableNchwxxPass final : public TensorReformatPass {
+    class EnableNchwxxPass : public TensorReformatPass {
         std::string m_name = "tensor_format_nchwxx";
         size_t m_pack_c_size;
         VarNode* on_graph_endpoint_var(VarNode* new_var,
                                        VarNode* orig_var) const override;
+    public:
+        EnableNchwxxPass(size_t pack_c_size) : m_pack_c_size(pack_c_size) {}
+
         //! the flag for conv to transform to nchwxx
         enum class TransType {
             TRANS_PURE_NCHWXX,    //!< weight and src all trans to nchwxx
             TRANS_HYBIRD_NCHWXX,  //!< input is nchw, output is nchwxx
             TRANS_NONE,           //!< no need trans
         };
-
-    public:
-        EnableNchwxxPass(size_t pack_c_size) : m_pack_c_size(pack_c_size) {}
         const char* name() const override {
             return mgb_cstr_log(m_name.c_str());
         }
         void set_name(std::string in_name) { m_name = in_name; }
+
+        void fill_opr_convert_fun(size_t pack_c_size);
+
         //! make nchw -> nchwxx converter opt pass, pack_c_size is the x, like
         //! 4,8,16
         static std::unique_ptr<EnableNchwxxPass> make_nchwxx_converter(
                 size_t pack_c_size);
     };
 
-    struct OptimizeForInferenceOptions {
-        //! whether to enable IO in float16 compute in float32
-        bool f16_io_f32_comp = false;
-        //! whether to enable tranform to pure float16 model
-        bool f16_io_comp = false;
-        //! whether to enable conv bias nonlinearity fusion
-        bool fuse_conv_bias_nonlinearity = false;
-        //! whether to compute using NHWCD4 tensor format
-        bool use_nhwcd4 = false;
-        //! whether to compute using NCHW88 tensor format
-        bool use_nchw88 = false;
-        //! whether to compute using NCHW44 tensor format
-        bool use_nchw44 = false;
-        //! whether to enable tensor core
-        bool use_tensor_core = false;
-        //! fuse pattern like ReLU(conv_bias(x, w, b) + z) or conv_bias(x, w, b)
-        //! + z -> conv_bias(x, w, b, z)
-        bool fuse_conv_bias_with_z = false;
+    /*!
+     * \brief convert tensor format from nchw44 to nchw44_dot to speed up
+     * inference on armv8.2
+     */
+    class EnableNchw44DotPass final : public EnableNchwxxPass {
+        std::string m_name = "tensor_format_nchw44_dot";
+        VarNode* on_graph_endpoint_var(VarNode* new_var,
+                                       VarNode* orig_var) const override;
 
-#define SET(n)                                  \
-    OptimizeForInferenceOptions& enable_##n() { \
-        n = true;                               \
-        return *this;                           \
-    }
-        SET(f16_io_f32_comp);
-        SET(f16_io_comp);
-        SET(fuse_conv_bias_nonlinearity);
-        SET(use_nhwcd4);
-        SET(use_tensor_core);
-        SET(fuse_conv_bias_with_z);
-        SET(use_nchw88);
-        SET(use_nchw44);
-#undef SET
+    public:
+        EnableNchw44DotPass() : EnableNchwxxPass(4) {}
+        //! make nchw44 -> nchw44_dot converter opt pass
+        static std::unique_ptr<EnableNchw44DotPass> make_nchw44_dot_converter();
     };
+
+    struct OptimizeForInferenceOptions : cg::GraphCommonOptimizeOptions {};
 
     /*!
      * \brief optimize a computing graph for inference
@@ -300,6 +302,17 @@ namespace gopt {
     SymbolVarArray optimize_for_inference(
             const SymbolVarArray& dest_vars,
             const OptimizeForInferenceOptions& opt = {});
+
+    /*!
+     * \brief modify execution strategy for oprs with multiple
+     *      algorithms
+     *
+     * This would modify the operators inplace. It can be used for implement
+     * the fast-run mode.
+     */
+    void modify_opr_algo_strategy_inplace(
+            const VarNodeArrayView& dest_vars,
+            opr::mixin::Convolution::ExecutionPolicy::Strategy strategy);
 
     /*!
      * \brief enable PROFILE execution strategy for oprs with multiple
@@ -314,7 +327,7 @@ namespace gopt {
     void enable_opr_algo_profiling_inplace(const VarNodeArrayView& dest_vars);
 
     /*!
-     * \brief enable opr try profiling cache first, if failed, then try
+     * \brief enable opr try profiling cache first, if failed, fallback to
      * heuristic
      *
      * This would modify the operators inplace. It is usually used to enable
@@ -323,7 +336,8 @@ namespace gopt {
      * You may want to implement TimedFuncInvoker::ForkExecImpl and/or
      * PersistentCache for better performance in an SDK.
      */
-    void enable_opr_use_profiling_cache_inplace(const VarNodeArrayView& dest_vars);
+    void enable_opr_use_profiling_cache_inplace(
+            const VarNodeArrayView& dest_vars);
 
     /*!
      * \brief set workspace_limit for execution strategy for oprs with multiple
@@ -357,13 +371,6 @@ namespace gopt {
             const char* name() const override;
             void apply(OptState& opt) const override;
     };
-
-    /*!
-     * \brief transform tensor format in a network to c/4hwn4 format, and
-     * accelerate the inference speed on Nvidia platform
-     */
-    void reformat_to_chwn4_transform_dest_vars_inplace(
-            mgb::cg::VarNodeArray& dest_vars);
 
 }  // namespace gopt
 } // namespace mgb

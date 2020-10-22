@@ -92,6 +92,7 @@ MGB_DEFINE_CLS_WITH_SUPER(ReshapeBrdcastHelper,
     void scn_do_execute() override final;
     void add_input_layout_constraint() override final;
     void init_output_static_infer_desc() override;
+    NodeProp* do_make_node_prop() const override;
 
     protected:
         using Super::Super;
@@ -199,11 +200,14 @@ MGB_DEFINE_CLS_WITH_SUPER(AxisManipOprBase,
     void mem_plan_fwd_in2out_readonly() override final;
     void scn_do_execute() override final;
     void init_output_static_infer_desc() override final;
+    NodeProp* do_make_node_prop() const override;
 
     protected:
         using Super::Super;
         virtual TensorLayout axis_manip_get_output_layout(
                 const TensorLayout &inp_layout) const = 0;
+
+        void axis_manip_init(VarNode* inp);
 };
 
 }
@@ -319,8 +323,6 @@ MGB_DEFINE_OPR_CLASS(AxisAddRemove, intl::AxisManipOprBase) // {
 
         TensorLayout axis_manip_get_output_layout(
                 const TensorLayout &inp_layout) const override;
-
-        NodeProp* do_make_node_prop() const override;
 };
 
 namespace intl {
@@ -591,7 +593,7 @@ MGB_DEFINE_OPR_CLASS(ParamPackSplit, cg::SingleCNOperatorNodeBase) // {
     TensorShapeArray m_shapes;
     std::vector<dt_int32> m_offsets;
 
-    void scn_do_execute() override{};
+    void scn_do_execute() override;
     void init_output_static_infer_desc() override;
     bool infer_shape(size_t index, TensorShape &dest,
             const cg::static_infer::InpVal &inp);
@@ -615,6 +617,8 @@ public:
     const TensorShapeArray& get_output_shapes() const {
         return m_shapes;
     }
+
+    void init_rt_force_dynamic_mem_alloc_imply_chain() override;
 };
 
 /*!
@@ -637,7 +641,16 @@ MGB_DEFINE_OPR_CLASS(RelayoutFormat,
  *
  * See docs of megdnn params for more details
  */
-MGB_DEFINE_MEGDNN_OPR_WRAPPER_FWD1(WinogradFilterPreprocess);
+MGB_DEFINE_OPR_CLASS(WinogradFilterPreprocess,
+                     intl::MegDNNOprWrapperFwd<megdnn::WinogradFilterPreprocess>)
+    public:
+        WinogradFilterPreprocess(VarNode* p0, const Param& param,
+                const OperatorNodeConfig& config);
+        static SymbolVar make(SymbolVar p0, const Param& param = {},
+                const OperatorNodeConfig& config = {});
+        void init_output_dtype() override final;
+};
+
 } // opr
 } // mgb
 

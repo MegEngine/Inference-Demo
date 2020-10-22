@@ -48,6 +48,13 @@ namespace mgb {
 //! warn if result of a function is not used
 #define MGB_WARN_UNUSED_RESULT __attribute__((warn_unused_result))
 
+#if __cplusplus >= 201703L || __clang_major__ >= 4
+#define MGB_FALLTHRU [[fallthrough]];
+#elif __GNUC__ >= 7
+#define MGB_FALLTHRU __attribute__((fallthrough));
+#else
+#define MGB_FALLTHRU
+#endif
 
 /* ================ exception and assertion ================  */
 
@@ -84,9 +91,13 @@ void __on_exception_throw__(const std::exception &exc)
     MGB_CATCH(..., {_stmt; throw; }) \
     _stmt
 
+#if MGB_ENABLE_LOGGING
 //! throw exception with given message
-#define mgb_throw(_exc, _msg...) \
-    mgb_throw_raw(_exc(::mgb::ssprintf(_msg))) \
+#define mgb_throw(_exc, _msg...) mgb_throw_raw(_exc(::mgb::ssprintf(_msg)))
+#else
+//! throw exception with given message
+#define mgb_throw(_exc, _msg...) mgb_throw_raw(_exc(""))
+#endif
 
 //! throw exception with given message if condition is true
 #define mgb_throw_if(_cond, _exc, _msg...) \
@@ -184,6 +195,11 @@ void __log__(LogLevel level, const char *file, const char *func, int line,
 #define MGB_GETENV  ::std::getenv
 #else
 #define MGB_GETENV(_name)  static_cast<char*>(nullptr)
+#endif
+
+#ifdef WIN32
+#define unsetenv(_name) _putenv_s(_name, "");
+#define setenv(name,value,overwrite) _putenv_s(name,value)
 #endif
 
 // use some macro tricks to get lock guard with unique variable name

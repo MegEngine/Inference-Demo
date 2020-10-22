@@ -6,7 +6,8 @@
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied.
  */
 
 #pragma once
@@ -75,121 +76,157 @@ namespace mgb {
 
 //! the most general MegBrain exception type; also base class for all megbrain
 //! exceptions
-class MegBrainError: public std::exception {
-    protected:
-        std::string m_msg;
+class MegBrainError : public std::exception {
+protected:
+    std::string m_msg;
 
+public:
+    /*!
+     * \brief base class for extra information to be associated with an
+     *      exception
+     */
+    class ExtraInfo {
     public:
+        virtual ~ExtraInfo() = default;
+    };
 
-        /*!
-         * \brief base class for extra information to be associated with an
-         *      exception
-         */
-        class ExtraInfo {
-            public:
-                virtual ~ExtraInfo() = default;
-        };
+    MegBrainError(const std::string& msg) : m_msg(msg) { init(); }
 
-        MegBrainError(const std::string &msg);
+    const char* what() const noexcept override { return m_msg.c_str(); }
 
-        const char *what() const noexcept override {
-            return m_msg.c_str();
-        }
+    /*!
+     * \brief get associated extra info, or nullptr
+     */
+    const ExtraInfo* extra_info() const { return m_extra_info.get(); }
 
-        /*!
-         * \brief get associated extra info, or nullptr
-         */
-        const ExtraInfo* extra_info() const {
-            return m_extra_info.get();
-        }
+    /*!
+     * \brief set extra info
+     */
+    template <typename T>
+    MegBrainError& extra_info(T&& ptr) {
+        m_extra_info = ptr;
+        return *this;
+    }
 
-        /*!
-         * \brief set extra info
-         */
-        template<typename T>
-        MegBrainError& extra_info(T &&ptr) {
-            m_extra_info = ptr;
-            return *this;
-        }
+    ~MegBrainError() noexcept = default;
 
-        ~MegBrainError() noexcept = default;
-
-    private:
-        std::shared_ptr<ExtraInfo> m_extra_info;
+private:
+    std::shared_ptr<ExtraInfo> m_extra_info;
+    void init();
 };
 
 //! base class for system error: error caused by uncontrollable environment
 class SystemError : public MegBrainError {
-    public:
-        using MegBrainError::MegBrainError;
+public:
+    using MegBrainError::MegBrainError;
 };
 
 /*!
  * \brief exception to be thrown if failing to allocate memory
  */
-class MemAllocError: public SystemError {
-    public:
-        using SystemError::SystemError;
+class MemAllocError : public SystemError {
+public:
+    using SystemError::SystemError;
+};
+
+class CudaError final : public SystemError {
+public:
+    /*!
+     * \brief get extra info for current cuda status, to be appended in
+     *      error message
+     */
+    static std::string get_cuda_extra_info();
+    CudaError(const std::string& msg);
+};
+
+class AtlasError final: public SystemError {
+public:
+    AtlasError(const std::string& msg);
 };
 
 
-class CudaError final: public SystemError {
-    public:
-        /*!
-         * \brief get extra info for current cuda status, to be appended in
-         *      error message
-         */
-        static std::string get_cuda_extra_info();
+class ROCmError final : public SystemError {
+public:
+    /*!
+     * \brief get extra info for current rocm status, to be appended in
+     *      error message
+     */
+    static std::string get_rocm_extra_info();
 
-        CudaError(const std::string &msg);
+    ROCmError(const std::string& msg);
 };
 
+class CnrtError final : public SystemError {
+public:
+    /*!
+     * \brief get extra info for current cnrt status, to be appended in
+     * error message
+     */
+    static std::string get_cnrt_extra_info();
 
+    CnrtError(const std::string& msg);
+};
 
-class AssertionError final: public MegBrainError {
-    public:
-        using MegBrainError::MegBrainError;
+class CndevError final : public SystemError {
+public:
+    CndevError(const std::string& msg);
+};
+
+class CnmlError final : public SystemError {
+public:
+    CnmlError(const std::string& msg);
+};
+
+class AssertionError final : public MegBrainError {
+public:
+    using MegBrainError::MegBrainError;
 };
 
 //! datatype conversion error
-class ConversionError final: public MegBrainError {
-    public:
-        using MegBrainError::MegBrainError;
+class ConversionError final : public MegBrainError {
+public:
+    using MegBrainError::MegBrainError;
 };
 
-class TensorCopyOverlapError final: public MegBrainError {
-    public:
-        using MegBrainError::MegBrainError;
+class TensorCopyOverlapError final : public MegBrainError {
+public:
+    using MegBrainError::MegBrainError;
 };
 
-class TensorReshapeError final: public MegBrainError {
-    public:
-        using MegBrainError::MegBrainError;
+class TensorReshapeError final : public MegBrainError {
+public:
+    using MegBrainError::MegBrainError;
 };
 
-class SerializationError final: public MegBrainError {
-    public:
-        using MegBrainError::MegBrainError;
+class SerializationError final : public MegBrainError {
+public:
+    using MegBrainError::MegBrainError;
 };
 
-class MegDNNError final: public MegBrainError {
-    public:
-        using MegBrainError::MegBrainError;
+class MegDNNError final : public MegBrainError {
+public:
+    using MegBrainError::MegBrainError;
 };
 
 //! megbrain internal error; should be treated as a bug
-class InternalError final: public MegBrainError {
-    public:
-        using MegBrainError::MegBrainError;
+class InternalError final : public MegBrainError {
+public:
+    using MegBrainError::MegBrainError;
 };
 
-class TimeoutError final: public MegBrainError {
-    public:
-        using MegBrainError::MegBrainError;
+class TimeoutError final : public MegBrainError {
+public:
+    using MegBrainError::MegBrainError;
 };
+
+
+}  // namespace mgb
+
+namespace mgb {
 
 bool has_uncaught_exception();
 
-} // namespace mgb
+}  // namespace mgb
+
 
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}

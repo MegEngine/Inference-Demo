@@ -199,6 +199,21 @@ class DevMemAlloc: virtual public MemAllocBase {
         static std::unique_ptr<DevMemAlloc> make_cuda_alloc();
 #endif
 
+#if MGB_ROCM
+        /*!
+         * \brief create a new allocator for a device that merely forward
+         *      hipMalloc and hipFree.
+         */
+        static std::unique_ptr<DevMemAlloc> make_rocm_alloc();
+#endif
+
+#if MGB_CAMBRICON
+        /*!
+         * \brief create a new allocator for a device that merely forward
+         * cnrtMalloc and cnrtFree.
+         */
+        static std::unique_ptr<DevMemAlloc> make_cambricon_alloc();
+#endif
 
         virtual ~DevMemAlloc() = default;
 
@@ -339,6 +354,32 @@ class FwdDevMemAlloc final : public DevMemAlloc {
 
 public:
     FwdDevMemAlloc(const std::shared_ptr<RawAllocator>& ra) : m_raw_alloc(ra) {}
+};
+
+/* ===================== SimpleCachingAlloc  ===================== */
+/*!
+ * \brief An allocator that cache allocations to reduce call to raw allocator.
+ * Mainly used for CUDA pinned memory.
+ */
+class SimpleCachingAlloc : virtual public MemAllocBase {
+protected:
+    size_t m_alignment = 1;
+
+public:
+    virtual ~SimpleCachingAlloc() = default;
+    static std::unique_ptr<SimpleCachingAlloc> make(std::unique_ptr<RawAllocator> raw_alloc);
+
+    virtual void* alloc(size_t size) = 0;
+    virtual void free(void* ptr) = 0;
+
+    SimpleCachingAlloc& alignment(size_t alignment) {
+        m_alignment = alignment;
+        return *this;
+    };
+
+    size_t alignment() const {
+        return m_alignment;
+    };
 };
 
 } // mem_alloc

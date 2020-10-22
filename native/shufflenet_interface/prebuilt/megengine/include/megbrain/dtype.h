@@ -18,6 +18,7 @@ namespace mgb {
 
 using ::megdnn::dt_byte;
 MEGDNN_INC_FLOAT16(using ::megdnn::dt_float16;)
+MEGDNN_INC_FLOAT16(using ::megdnn::dt_bfloat16;)
 using ::megdnn::dt_float32;
 using ::megdnn::dt_int8;
 using ::megdnn::dt_uint8;
@@ -26,6 +27,7 @@ using ::megdnn::dt_int32;
 using ::megdnn::dt_quint8;
 using ::megdnn::dt_qint8;
 using ::megdnn::dt_qint32;
+using ::megdnn::dt_bool;
 using ::megdnn::DType;
 using ::megdnn::DTypeEnum;
 using ::megdnn::DTypeTrait;

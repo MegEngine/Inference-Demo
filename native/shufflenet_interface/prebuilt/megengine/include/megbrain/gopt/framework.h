@@ -13,6 +13,7 @@
 
 #include "megbrain/graph.h"
 #include "megbrain/gopt/gtrans.h"
+#include "megbrain/graph/cg.h"
 
 namespace mgb {
 namespace gopt {
@@ -465,6 +466,19 @@ namespace gopt {
              *      var_replace_map(var->owner_graph()) corresponding to var
              */
             static VarNode* var_replace_lookup(VarNode *var);
+
+            /**
+             * \brief add pass indicated by optimize options.
+             *
+             * \param options common options
+             * \param reset if set true, it will reset options when add passes.
+             */
+            const GraphOptimizer& add_passes_for_optimize_options(
+                    cg::GraphCommonOptimizeOptions& options,
+                    bool reset = false);
+
+            const GraphOptimizer& add_passes_for_optimize_options(
+                    const cg::GraphCommonOptimizeOptions& options);
     };
 
     /*!
@@ -476,27 +490,16 @@ namespace gopt {
      * Usually you would want to use ConstVarPropogate, and this base class
      * exists to avoid virtual dtor while allowing polymorphism.
      */
-    class ConstVarPropogateBase {
-        protected:
-            ~ConstVarPropogateBase() = default;
-
-            //! memory usage of a var
-            static size_t var_mem_size(VarNode *var) {
-                return var->dtype().size(var->shape().total_nr_elems());
-            }
-
-            //! called after a const but non-source opr is visited
-            virtual void on_midconst_opr(
-                    OperatorNodeBase *opr, size_t max_src_size) {
-                MGB_MARK_USED_VAR(opr);
-                MGB_MARK_USED_VAR(max_src_size);
-            }
+    class ConstVarPropogate{
 
         public:
-            explicit ConstVarPropogateBase(ConstVarType const_var_type):
+            explicit ConstVarPropogate(ConstVarType const_var_type):
                 m_const_var_type{const_var_type}
             {
             }
+
+            ConstVarPropogate() = default;
+            ~ConstVarPropogate() = default;
 
             //! note that both attrs would be false if opr is impure or it is
             //! not allowed to be replaced
@@ -513,11 +516,18 @@ namespace gopt {
 
             AddOprResult add_opr(OperatorNodeBase *opr);
 
+            const AddOprResult& opr_rst(OperatorNodeBase *opr) const {
+                return m_oprinfo.at(opr).result;
+            }
+
             bool is_const(OperatorNodeBase *opr) const {
                 return m_oprinfo.at(opr).is_const;
             }
             bool is_const(VarNode *var) const {
                 return is_const(var->owner_opr());
+            }
+            size_t max_size(OperatorNodeBase *opr) const {
+                return m_oprinfo.at(opr).max_size;
             }
 
             //! whether a var is produced by non-source const opr
@@ -527,6 +537,11 @@ namespace gopt {
 
             bool is_midconst(VarNode *var) const {
                 return is_midconst(var->owner_opr());
+            }
+
+            //! memory usage of a var
+            static size_t var_mem_size(VarNode *var) {
+                return var->dtype().size(var->shape().total_nr_elems());
             }
 
         private:
@@ -540,11 +555,6 @@ namespace gopt {
             ThinHashMap<OperatorNodeBase*, OprInfo> m_oprinfo;
             ConstVarType m_const_var_type;
 
-    };
-
-    class ConstVarPropogate final: public ConstVarPropogateBase {
-        public:
-            using ConstVarPropogateBase::ConstVarPropogateBase;
     };
 
 } // namespace gopt
