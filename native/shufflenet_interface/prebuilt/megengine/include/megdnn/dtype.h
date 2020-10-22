@@ -29,6 +29,7 @@
 #define MEGDNN_FLOAT16_SELECT(_x, _y)   _y
 #else
 #include "megdnn/dtype/half.hpp"
+#include "megdnn/dtype/bfloat16.hpp"
 #define MEGDNN_INC_FLOAT16(_x) _x
 #define MEGDNN_FLOAT16_SELECT(_x, _y)   _x
 #endif
@@ -49,7 +50,9 @@ namespace megdnn {
     cb(IntB4) \
     cb(Byte) \
     MEGDNN_INC_FLOAT16(cb(Float16)) \
+    MEGDNN_INC_FLOAT16(cb(BFloat16)) \
     cb(UintB4) \
+    cb(Bool) \
 
 /*!
  * \brief iterate through each full byte dtype
@@ -62,6 +65,8 @@ namespace megdnn {
     cb(Int32) \
     cb(Byte) \
     MEGDNN_INC_FLOAT16(cb(Float16)) \
+    MEGDNN_INC_FLOAT16(cb(BFloat16)) \
+    cb(Bool) \
 
 /*!
  * \brief iterate through each fractional byte dtype
@@ -98,9 +103,12 @@ namespace megdnn {
  * \brief iterate through each dtype object that can be involved in float
  *      numeric computing
  */
+
 #define MEGDNN_FOREACH_COMPUTING_DTYPE_FLOAT(cb) \
     cb(::megdnn::dtype::Float32) \
     MEGDNN_INC_FLOAT16(cb(::megdnn::dtype::Float16)) \
+    MEGDNN_INC_FLOAT16(cb(::megdnn::dtype::BFloat16))
+
 
 /*!
  * \brief iterate through each dtype object that can be involved in integer
@@ -118,7 +126,7 @@ namespace megdnn {
  */
 #define MEGDNN_FOREACH_COMPUTING_DTYPE(cb) \
     MEGDNN_FOREACH_COMPUTING_DTYPE_FLOAT(cb) \
-    MEGDNN_FOREACH_COMPUTING_DTYPE_INT(cb)
+    MEGDNN_FOREACH_COMPUTING_DTYPE_INT(cb) \
 
 //! In order to avoid an unnecessary increase in binary size, we just
 //! use QuantizedS16 dtype in winograd_filter_preprocess now. So I didn't add
@@ -344,7 +352,9 @@ typedef int32_t dt_int32;
 typedef int16_t dt_int16;
 typedef int8_t dt_int8;
 typedef uint8_t dt_uint8;
+typedef bool dt_bool;
 MEGDNN_INC_FLOAT16(typedef half_float::half dt_float16;)
+MEGDNN_INC_FLOAT16(typedef half_bfloat16::bfloat16 dt_bfloat16;)
 
 #define MEGDNN_PARAMETERIZED_DTYPE_ENUM_BASE 100000
 #if MEGDNN_CC_HOST
@@ -367,7 +377,10 @@ MEGDNN_INC_FLOAT16(typedef half_float::half dt_float16;)
             Float16,
 #endif
             UintB4 = 10,
-
+#if !MEGDNN_DISABLE_FLOAT16
+            BFloat16 = 11,
+#endif
+            Bool = 12,
             #define FST(_name) _name = MEGDNN_PARAMETERIZED_DTYPE_ENUM_BASE,
             #define D(_name) _name,
             MEGDNN_FOREACH_PARAMETERIZED_DTYPE_2(FST, D)
@@ -384,7 +397,7 @@ MEGDNN_INC_FLOAT16(typedef half_float::half dt_float16;)
 #if MEGDNN_CC_HOST
     //! dtype numeric category fo
     enum class DTypeCategory: int {
-        OTHER, FLOAT, INT, LOWBIT, QUANTIZED
+        OTHER, FLOAT, INT, LOWBIT, QUANTIZED, BOOL
     };
     //! dtype signedness
     enum class DTypeSignedness: int {
@@ -393,7 +406,7 @@ MEGDNN_INC_FLOAT16(typedef half_float::half dt_float16;)
 #else
     struct DTypeCategory {
         enum Ev {
-            OTHER, FLOAT, INT, LOWBIT, QUANTIZED
+            OTHER, FLOAT, INT, LOWBIT, QUANTIZED, BOOL
         };
         int ev;
     };
@@ -699,9 +712,13 @@ MEGDNN_DEF_DT(Int32, dt_int32, INT, SIGNED, INT32_MIN, INT32_MAX);
 MEGDNN_DEF_DT(Int16, dt_int16, INT, SIGNED, INT16_MIN, INT16_MAX);
 MEGDNN_DEF_DT(Int8, dt_int8, INT, SIGNED, INT8_MIN, INT8_MAX);
 MEGDNN_DEF_DT(Uint8, dt_uint8, INT, UNSIGNED, 0, UINT8_MAX);
+MEGDNN_DEF_DT(Bool, dt_bool, BOOL, UNSIGNED, false, true);
 MEGDNN_INC_FLOAT16(MEGDNN_DEF_DT(Float16, dt_float16, FLOAT, SIGNED,
             std::numeric_limits<dt_float16>::lowest(),
             std::numeric_limits<dt_float16>::max()));
+MEGDNN_INC_FLOAT16(MEGDNN_DEF_DT(BFloat16, dt_bfloat16, FLOAT, SIGNED,
+            std::numeric_limits<dt_bfloat16>::lowest(),
+            std::numeric_limits<dt_bfloat16>::max()));
 
 template <>
 struct DTypeTrait<dtype::Byte> {

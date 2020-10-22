@@ -94,14 +94,14 @@ namespace mgb {
                         m_param{param}, m_param_size{param_size}
                     {
                     }
-
                     //! build a blob representation to be used as cache key
                     PersistentCache::Blob build_blob() const;
             };
 
             struct ResultEntry {
                 std::string algo;   //! identifier of the algorithm
-                bool reproducible;  //! whether algorithm is reproducible
+                //! sscanf will up bool as int
+                int reproducible;  //! whether algorithm is reproducible
                 double time;        //! execution time in seconds
                 size_t workspace;   //! workspace in bytes
             };

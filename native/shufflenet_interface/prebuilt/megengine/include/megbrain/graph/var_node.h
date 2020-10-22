@@ -22,6 +22,10 @@
 #include <mutex>
 
 namespace mgb {
+namespace imperative {
+    class ProxyGraph;
+} // namespace imperative
+
 namespace cg {
 namespace static_infer {
     class StaticInferManagerImpl;
@@ -458,8 +462,10 @@ class VarNode final: public GraphNodeBase {
          * this var must have NO_SYS_MEM_ALLOC flag; if shape does not increase
          * and original tensor storage is valid, it is guaranteed that old data
          * would be retained.
+         *
+         * \warning Alloc size_req memory if size_req != 0.
          */
-        VarNode& shape_alloc(const TensorShape &shape);
+        VarNode& shape_alloc(const TensorShape &shape, size_t size_req = 0);
 
         /*!
          * \brief directly reset device tensor from another var
@@ -571,11 +577,16 @@ class VarNode final: public GraphNodeBase {
 
         void assign_dev_tensor_from_tensor(const DeviceTensorND &value);
 
+#if MGB_ENABLE_JSON
+        std::shared_ptr<json::Value> dump_static_infer_info_to_json() const;
+#endif
+
         friend class static_infer::StaticInferManagerImpl;
         friend class VarNodeMemManager;
         friend class VarDevMemDefragmenter;
         friend class EagerEvalManager;
         friend class MemAllocPlan;
+        friend class imperative::ProxyGraph;
 };
 
 enum class VarNode::Flag: uint32_t {

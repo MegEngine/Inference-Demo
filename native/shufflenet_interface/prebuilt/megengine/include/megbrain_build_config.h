@@ -13,25 +13,32 @@
 #define _HEADER_MGB_BUILD_CONFIG
 
 #define MGB_CUDA 0
+#define MGB_ROCM 0
+#define MGB_CAMBRICON 0
+#define MGB_ATLAS 0
 #define MGB_ASSERT_LOC 0
 #define MGB_ENABLE_DEBUG_UTIL 0
 #define MGB_ENABLE_LOGGING 1
 #define MGB_ENABLE_GRAD 0
+#define MGB_ENABLE_CPUINFO 0
 #define MGB_VERBOSE_TYPEINFO_NAME 1
 #define MGB_BUILD_SLIM_SERVING 1
 #define MGB_ENABLE_EXCEPTION 1
 #define MGB_JIT 0
+#define MGB_JIT_MLIR 0
 #define MGB_JIT_HALIDE 0
 #define MGB_ENABLE_TENSOR_RT 0
 #define MGB_ENABLE_JSON 1
-#define MGB_HAVE_THREAD 0
+#define MGB_HAVE_THREAD 1
 #define MGB_ENABLE_OPR_MM 0
-#define MEGDNN_ENABLE_MANGLING 0
+#define MGB_ENABLE_FBS_SERIALIZATION 1
+#define MGB_IS_DEV 0
 
 // DNN related flags
 // Platform macro's
 #define MEGDNN_WITH_CUDA 0
 
+#define MEGDNN_WITH_ROCM 0
 #define MEGDNN_ARMV7 0
 #define MEGDNN_AARCH64 1
 #define MEGDNN_ENABLE_FP16_NEON 0
@@ -41,7 +48,7 @@
 #define MEGDNN_X86_WITH_MKL_DNN 0
 #define MEGDNN_ENABLE_RTTI 1
 #define MEGDNN_ENABLE_LOGGING 1
-#define MEGDNN_ENABLE_LOGGING 1
+#define MEGDNN_ENABLE_MANGLING 0
 #define MEGDNN_ENABLE_EXCEPTIONS 1
 #define MEGDNN_NAIVE 0
 #define MEGDNN_X86 0
@@ -49,6 +56,11 @@
 #define MEGDNN_64_BIT 1
 #define MEGDNN_THREADS_512 0
 #define MEGDNN_ENABLE_MULTI_THREADS 0
+
+// whether atlas is available
+#ifndef MGB_ATLAS
+#define MGB_ATLAS  0
+#endif
 
 // whether cuda is available
 #ifndef MGB_CUDA
@@ -74,6 +86,16 @@
 // whether to enable registering opr grad functions
 #ifndef MGB_ENABLE_GRAD
 #define MGB_ENABLE_GRAD         1
+#endif
+
+// whether to enable cpuinfo
+#ifndef MGB_ENABLE_CPUINFO
+#define MGB_ENABLE_CPUINFO      1
+#endif
+
+#ifdef IOS
+#undef MGB_ENABLE_CPUINFO
+#define MGB_ENABLE_CPUINFO      0
 #endif
 
 // whether to include actual class name in mgb::Typeinfo object; if this is
@@ -117,6 +139,15 @@
 #endif
 #ifndef MGB_JIT_HALIDE
 #define MGB_JIT_HALIDE 0
+#endif
+
+
+#ifndef MEGDNN_WITH_CAMBRICON
+#define MEGDNN_WITH_CAMBRICON 0
+#endif
+
+#ifndef MGB_CAMBRICON
+#define MGB_CAMBRICON MEGDNN_WITH_CAMBRICON
 #endif
 
 

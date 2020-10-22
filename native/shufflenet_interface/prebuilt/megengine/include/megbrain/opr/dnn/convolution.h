@@ -72,13 +72,53 @@ class Convolution {
                 cg::OperatorNodeBase* self);
 };
 
+class WeightPreprocessExecutor : public cg::OperatorNodeMixinBase {
+    class PreprocessedFilterExecDep;
+
+    using PreprocessedFilter = megdnn::detail::PreprocessedFilter;
+    std::unique_ptr<PreprocessedFilter> m_preprocessed_filter;
+    SmallVector<DeviceTensorND> m_filter_storage;
+protected:
+    //! this should only be called in scn_do_execute or similar functions (i.e.
+    //! post dispatch-to-ExecEnv)
+    void mixin_update_preprocessed_filter(OperatorNodeBase& opr);
+    void record_preprocessed_weight(
+            cg::GraphExecutable::ExecDependencyArray& deps);
+    PreprocessedFilter* preprocessed_filter() const {
+        return m_preprocessed_filter.get();
+    }
+
+    bool mixin_allow_weight_preprocess(const OperatorNodeBase& opr) const;
+    virtual SmallVector<TensorLayout> deduce_preprocessed_filter_layout() = 0;
+    virtual void scn_do_execute_preprocess() = 0;
+    virtual ~WeightPreprocessExecutor() = default;
+};
+
 } // namespace mixin
 
 namespace intl {
+    //! glue class to apply mixin::WeightPreprocessExecutor
+    template<class Base = cg::OperatorNodeBase,
+             class MixinImpl = mixin::WeightPreprocessExecutor>
+    class OprWithWeightPreprocess: public mixin::CheckBase<Base>::Base,
+                                   public MixinImpl {
+    protected:
+        using Base::Base;
+
+        void update_preprocessed_filter() {
+            this->mixin_update_preprocessed_filter(*this);
+        }
+
+        bool allow_weight_preprocess() const {
+            return this->mixin_allow_weight_preprocess(*this);
+        }
+    };
+
     using ConvBiasBase = cg::SingleCNOperatorNode<
             cg::OutshapePureByInshapeOpr<>,
             mixin::MegDNNOprHolderImpl<megdnn::ConvBiasForward>>;
-    using ConvBiasForwardBase = WorkspaceSizeInfer<ConvBiasBase>;
+    using ConvBiasForwardBase =
+            OprWithWeightPreprocess<WorkspaceSizeInfer<ConvBiasBase>>;
 
     using DeformableConvBackwardDataT = cg::SingleCNOperatorNode<
             cg::OutshapePureByInshapeOpr<>,
@@ -89,11 +129,20 @@ namespace intl {
             cg::OutshapePureByInshapeOpr<>,
             mixin::MegDNNOprHolderImpl<megdnn::BatchConvBiasForward>>;
     using BatchConvBiasForwardBase = WorkspaceSizeInfer<BatchConvBiasBase>;
+
+    using ConvolutionForwardBase = OprWithWeightPreprocess<
+            WorkspaceSizeInfer<typename MegDNNOprWrapperFwdBase<
+                    megdnn::ConvolutionForward>::Base>>;
 }  // namespace intl
 
+namespace testing {
+
+class ConvolutionTestingPeer;
+
+}  // namespace testing
+
 MGB_DEFINE_OPR_CLASS(ConvolutionForward,
-        intl::MegDNNOprWrapperFwd<megdnn::ConvolutionForward>,
-        public mixin::Convolution) // {
+        intl::ConvolutionForwardBase, public mixin::Convolution) // {
 
     void init_profile_cache() override;
     void init_output_dtype() override;
@@ -101,6 +150,17 @@ MGB_DEFINE_OPR_CLASS(ConvolutionForward,
             const TensorShapeArray &input_shapes,
             const TensorShapeArray &output_shapes) const override final;
     void init_output_format() override;
+    void scn_do_execute() override;
+    void add_input_layout_constraint() override;
+    void init_output_static_infer_desc() override;
+    void get_output_var_shape(const TensorShapeArray& inp_shape,
+                              TensorShapeArray& out_shape) const override final;
+    void record_execute_deps(
+            cg::GraphExecutable::ExecDependencyArray& deps) override;
+    SmallVector<TensorLayout> deduce_preprocessed_filter_layout() override;
+    void scn_do_execute_preprocess() override;
+
+    friend testing::ConvolutionTestingPeer;
 
     public:
         ConvolutionForward(VarNode *src, VarNode *filter,
@@ -134,7 +194,10 @@ MGB_DEFINE_OPR_CLASS(ConvBiasForward, intl::ConvBiasForwardBase,
     void record_execute_deps(
             cg::GraphExecutable::ExecDependencyArray& deps) override {
         this->record_megdnn_opr(deps);
+        this->record_preprocessed_weight(deps);
     }
+    SmallVector<TensorLayout> deduce_preprocessed_filter_layout() override;
+    void scn_do_execute_preprocess() override;
 
 public:
     //! src * filter

@@ -6,7 +6,8 @@
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied.
  */
 #pragma once
 #include "megdnn/internal/opr_header_prologue.h"
@@ -49,6 +50,17 @@ protected:
                     size_t workspace_in_bytes);
 };
 using SeparableConv = SeparableConvForward;
+
+namespace detail {
+
+struct PreprocessedFilter {
+    //! user data; its lifetime should be bound to MegDNN Convolution
+    //! operator
+    void* algorithm_id;
+    TensorNDArray tensors;
+};
+
+}  // namespace intl
 
 /**
  * \brief base class for convolution operation
@@ -130,6 +142,7 @@ public:
             return flag;
         }
     };
+    using PreprocessedFilter = detail::PreprocessedFilter;
 
 protected:
     // Check or deduce output DType
@@ -200,19 +213,37 @@ public:
      * \param[out] dst (n, oc, oh, ow)
      */
     virtual void exec(_megdnn_tensor_in src, _megdnn_tensor_in filter,
-                      _megdnn_tensor_out dst, _megdnn_workspace workspace) = 0;
+                      _megdnn_tensor_out dst,
+                      const PreprocessedFilter* preprocessed_filter,
+                      _megdnn_workspace workspace) = 0;
+
+    virtual void exec_preprocess(const TensorLayout& src_layout,
+                                 _megdnn_tensor_in filter,
+                                 const TensorLayout& dst_layout,
+                                 PreprocessedFilter* preprocessed_filter,
+                                 _megdnn_workspace workspace) = 0;
     void deduce_dtype(DType src, DType filter, DType& dst);
+
     void deduce_layout(const TensorLayout& src, const TensorLayout& filter,
                        TensorLayout& dst);
-    virtual size_t get_workspace_in_bytes(const TensorLayout& src,
-                                          const TensorLayout& filter,
-                                          const TensorLayout& dst) = 0;
+    virtual size_t get_workspace_in_bytes(
+            const TensorLayout& src, const TensorLayout& filter,
+            const TensorLayout& dst,
+            const PreprocessedFilter* preprocessed_filter) = 0;
+
+    virtual SmallVector<TensorLayout> deduce_preprocessed_filter_layout(
+            const TensorLayout& src, const TensorLayout& filter,
+            const TensorLayout& dst) = 0;
+
+    virtual size_t get_preprocess_workspace_in_bytes(
+            const TensorLayout& src, const TensorLayout& filter,
+            const TensorLayout& dst) = 0;
 
 protected:
-    CanonizedFilterMeta check_exec(const TensorLayout& src,
-                                   const TensorLayout& filter,
-                                   const TensorLayout& dst,
-                                   size_t workspace_in_bytes);
+    CanonizedFilterMeta check_exec(
+            const TensorLayout& src, const TensorLayout& filter,
+            const TensorLayout& dst, size_t workspace_in_bytes,
+            const PreprocessedFilter* preprocessed_filter);
 };
 using Convolution = ConvolutionForward;
 
@@ -289,25 +320,51 @@ public:
     /**
      * \param[in] src (n, ic, ih, iw) or (n, ih, iw, ic)
      * \param[in] filter (oc, ic, fh, fw) or (oc, fh, fw, ic) or (oc/4, fh, fw,
-     * 4*ic) \param[in] bias (1, oc, 1, 1) \param[in] z same as dst \param[out]
-     * dst (n, oc, oh, ow) or (n, oh, ow, oc)
+     * 4 * ic)
+     * \param[in] bias (1, oc, 1, 1)
+     * \param[in] z same as dst
+     * \param[out] dst (n, oc, oh, ow) or (n, oh, ow, oc)
      *
      * \note if the format is NCHW_WINOGRAD, the filter layout is (alphah,
      * alphaw, oc, ic)
      */
     virtual void exec(_megdnn_tensor_in src, _megdnn_tensor_in filter,
                       _megdnn_tensor_in bias, _megdnn_tensor_in z,
-                      _megdnn_tensor_out dst, _megdnn_workspace workspace) = 0;
+                      _megdnn_tensor_out dst,
+                      const PreprocessedFilter* preprocessed_filter,
+                      _megdnn_workspace workspace) = 0;
+    virtual void exec_preprocess(const TensorLayout& src_layout,
+                                 _megdnn_tensor_in filter,
+                                 const TensorLayout& bias_layout,
+                                 const TensorLayout& z_layout,
+                                 const TensorLayout& dst_layout,
+                                 PreprocessedFilter* preprocessed_filter,
+                                 _megdnn_workspace workspace) = 0;
     void deduce_dtype(DType src, DType filter, DType bias, DType z, DType& dst);
     void deduce_layout(const TensorLayout& src, const TensorLayout& filter,
                        const TensorLayout& bias, const TensorLayout& z,
                        TensorLayout& dst);
 
-    virtual size_t get_workspace_in_bytes(const TensorLayout& src,
-                                          const TensorLayout& filter,
-                                          const TensorLayout& bias,
-                                          const TensorLayout& z,
-                                          const TensorLayout& dst) = 0;
+    virtual size_t get_workspace_in_bytes(
+            const TensorLayout& src, const TensorLayout& filter,
+            const TensorLayout& bias, const TensorLayout& z,
+            const TensorLayout& dst,
+            const PreprocessedFilter* preprocessed_filter) = 0;
+    virtual size_t get_preprocess_workspace_in_bytes(
+            const TensorLayout& src, const TensorLayout& filter,
+            const TensorLayout& bias, const TensorLayout& z,
+            const TensorLayout& dst) = 0;
+    virtual SmallVector<TensorLayout> deduce_preprocessed_filter_layout(
+            const TensorLayout& src, const TensorLayout& filter,
+            const TensorLayout& bias, const TensorLayout& z,
+            const TensorLayout& dst) = 0;
+
+    static void deduce_winograd_origin_layout_and_param(
+            const Param::Format format, const size_t output_block_size,
+            const TensorLayout& src_layout,
+            const TensorLayout& winograd_filter_layout,
+            TensorLayout& origin_layout, Param& origin_param);
+
     enum class BiasMode : uint32_t {
         NO_BIAS = 0,             //!< no bias
         BROADCAST_CHANNEL_BIAS,  //!< broadcast channel bias, [1, c, 1, 1]
@@ -344,7 +401,9 @@ public:
     //! get algo name, the format is ParamTrait<T>::category:base:p.to_string()
     //! \warning: base must not contain :.
     template <typename T>
-    static std::string algo_name(const std::string& base, const T& p);
+    static std::string algo_name(
+            const std::string& base, const T& p,
+            param::ConvBias::Format format = param::ConvBias::Format::NCHW);
     /*!
      * \brief parse algo_name and get WinogradParam from algo name.
      *
@@ -356,13 +415,32 @@ public:
      */
     static WinogradParam parse_winograd_name(const std::string& algo_name);
 
+    /**
+     * @brief find if there is nchw_nchwxx conv kernel optimized for argment,
+     * nchw44 used for arm, nchw88 used for x86
+     *
+     * @param src_dtype  conv feature map data type
+     * @param filter_dtype  conv filter or weight data type
+     * @param dst_dtype output data type
+     * @param fm filter meta param
+     * @param bias_mode bias mode, no_bias or broadcast or bias
+     * @param nonline_mode identity or relu or h_swish or sigmoid
+     * @return true, found a kernel
+     * @return false, can`t found any kernel
+     */
+    static bool is_nchw_nchwxx_optimized(
+            const DTypeEnum src_dtype, const DTypeEnum filter_dtype,
+            const DTypeEnum dst_dtype,
+            const ConvolutionBase<param::Convolution>::CanonizedFilterMeta& fm,
+            const ConvBiasForward::BiasMode bias_mode,
+            const param::ConvBias::NonlineMode nonline_mode);
+
 protected:
-    CanonizedFilterMeta check_exec(const TensorLayout& src,
-                                   const TensorLayout& filter,
-                                   const TensorLayout& bias,
-                                   const TensorLayout& z,
-                                   const TensorLayout& dst,
-                                   size_t workspace_in_bytes);
+    CanonizedFilterMeta check_exec(
+            const TensorLayout& src, const TensorLayout& filter,
+            const TensorLayout& bias, const TensorLayout& z,
+            const TensorLayout& dst, size_t workspace_in_bytes,
+            const PreprocessedFilter* preprocessed_filter);
 };
 using ConvBias = ConvBiasForward;
 
@@ -602,6 +680,53 @@ protected:
     void check_exec(const TensorLayout& src, const TensorLayout& dst,
                     const TensorLayout& diff, const TensorLayout& grad,
                     size_t workspace_in_bytes);
+};
+
+/**
+ * \brief base class for AdaptivePooling
+ */
+class AdaptivePoolingBase : public OperatorBase {
+    DEF_OPR_IMPL_CTOR(AdaptivePoolingBase, OperatorBase);
+    DEF_OPR_PARAM(AdaptivePooling);
+
+protected:
+    param::Pooling deduce_pooling_param(const TensorLayout& src,
+                                        const TensorLayout& dst);
+};
+
+class AdaptivePoolingForward : public AdaptivePoolingBase {
+    DEF_OPR_IMPL(AdaptivePoolingForward, AdaptivePoolingBase, 1, 1);
+
+public:
+    /**
+     * \param[in] src input tensor
+     * \param[out] dst output tensor
+     */
+    virtual void exec(_megdnn_tensor_in src, _megdnn_tensor_out dst,
+                      _megdnn_workspace workspace) = 0;
+    virtual size_t get_workspace_in_bytes(const TensorLayout& src,
+                                          const TensorLayout& dst) = 0;
+};
+
+using AdaptivePooling = AdaptivePoolingForward;
+
+class AdaptivePoolingBackward : public AdaptivePoolingBase {
+    DEF_OPR_IMPL(AdaptivePoolingBackward, AdaptivePoolingBase, 3, 1);
+
+public:
+    /**
+     * \param[in] src the `src' parameter in AdaptivePoolingForward::exec
+     * \param[in] dst the `dst' parameter in AdaptivePoolingForward::exec
+     * \param[in] diff the backpropagated gradient wrt. dst
+     * \param[out] grad the backpropagated gradient wrt. src
+     */
+    virtual void exec(_megdnn_tensor_in src, _megdnn_tensor_in dst,
+                      _megdnn_tensor_in diff, _megdnn_tensor_out grad,
+                      _megdnn_workspace workspace) = 0;
+    virtual size_t get_workspace_in_bytes(const TensorLayout& src,
+                                          const TensorLayout& dst,
+                                          const TensorLayout& diff,
+                                          const TensorLayout& grad) = 0;
 };
 
 /**
